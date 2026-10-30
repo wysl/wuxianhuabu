@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../core/comfy_workflow_service.dart';
 import '../state/connection_providers.dart';
+import '../state/generated_media.dart';
 import '../state/workflow_params.dart';
 
 /// The bottom bar: submit, watch, cancel, and show the result.
@@ -81,7 +82,18 @@ class _RunnerPanelState extends ConsumerState<RunnerPanel> {
     final media = run.result?.media ?? const <Map<String, String>>[];
     if (media.isEmpty) {
       widget.onError('任务完成但没有产出文件');
+      return;
     }
+    // Publish the result so the canvas can show it. This closes the loop:
+    // parameters in, files out, both on the board.
+    ref.read(generatedMediaProvider.notifier).add(
+          GeneratedMedia(
+            promptId: run.promptId,
+            workflowPath: widget.prepared?.sourcePath ?? '',
+            media: media,
+            createdAt: DateTime.now(),
+          ),
+        );
   }
 
   Future<void> _cancel() async {

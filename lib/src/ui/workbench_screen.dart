@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/comfy_workflow_service.dart';
 import '../core/connection_profile.dart';
 import '../state/connection_providers.dart';
+import '../state/canvas_session.dart';
 import '../state/profile_store.dart';
 import 'canvas_board.dart';
 import 'parameter_inspector.dart';
@@ -66,6 +67,11 @@ class _WorkbenchScreenState extends ConsumerState<WorkbenchScreen> {
       _prepared = prepared;
       _loadError = null;
     });
+    // Opening a workflow starts (or resumes) its canvas: the stored layout is
+    // reused when one exists, so revisiting a workflow keeps its arrangement.
+    ref
+        .read(canvasSessionProvider.notifier)
+        .openFor(prepared.sourcePath, prepared.name);
   }
 
   void _reportError(String message) {

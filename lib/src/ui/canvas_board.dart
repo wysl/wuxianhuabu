@@ -7,6 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/comfy_workflow_service.dart';
 import '../core/connection_profile.dart';
+import '../state/connection_providers.dart';
+import '../state/canvas_session.dart';
+import '../state/generated_media.dart';
 
 /// A card on the canvas.
 ///
@@ -86,6 +89,55 @@ class _CanvasBoardState extends ConsumerState<CanvasBoard> {
     _scale = 1;
     _offset = Offset.zero;
     _selectedId = null;
+    // Results produced before this canvas existed still belong on it.
+    _pendingResults = ref.read(generatedMediaProvider).length;
+  }
+
+  /// Number of generated results already turned into cards, so a rebuild does
+  /// not duplicate them and a new result is appended exactly once.
+  int _pendingResults = 0;
+
+  /// Appends cards for results generated since the last rebuild.
+  void _syncGeneratedResults() {
+    final prepared = widget.prepared;
+    if (prepared == null) return;
+    final results = ref
+        .read(generatedMediaProvider)
+        .where((entry) => entry.workflowPath == prepared.sourcePath)
+        .toList();
+    if (results.length <= _pendingResults) return;
+
+    var y = _lowestCardBottom() + 24;
+    for (final result in results.take(results.length - _pendingResults)) {
+      _cards.add(
+        CanvasCard(
+          id: 'r-${result.promptId}',
+          origin: Offset(80, y),
+          size: const Size(300, 260),
+          kind: CardKind.media,
+          media: result.media,
+          caption: '结果 ${result.media.length} 个文件',
+        ),
+      );
+      y += 280;
+    }
+    _pendingResults = results.length;
+    _persist();
+  }
+
+  /// Persists the current card list. Called after edits rather than on a timer
+  /// inside the board: `CanvasAutosave` already debounces, so this is cheap.
+  void _persist() {
+    ref.read(canvasSessionProvider.notifier).persist(_cards);
+  }
+
+  double _lowestCardBottom() {
+    if (_cards.isEmpty) return 80;
+    var bottom = double.negativeInfinity;
+    for (final card in _cards) {
+      bottom = math.max(bottom, card.rect.bottom);
+    }
+    return bottom;
   }
 
   /// Seeds a new canvas with the workflow's own headline parameters, so the
@@ -164,6 +216,7 @@ class _CanvasBoardState extends ConsumerState<CanvasBoard> {
         ),
       );
     });
+    _persist();
   }
 
   CanvasCard? _hitTest(Offset world) {
@@ -176,6 +229,9 @@ class _CanvasBoardState extends ConsumerState<CanvasBoard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Runs finish asynchronously; fold any new result into the board before
+    // laying out so its card appears on the next frame.
+    _syncGeneratedResults();
     return LayoutBuilder(
       builder: (context, constraints) {
         final viewport = Size(constraints.maxWidth, constraints.maxHeight);
@@ -247,6 +303,7 @@ class _CanvasBoardState extends ConsumerState<CanvasBoard> {
                   _dragStart = null;
                   _dragOrigins = {};
                 });
+                _persist();
               }
             },
             onDoubleTapDown: (details) =>
@@ -268,7 +325,10 @@ class _CanvasBoardState extends ConsumerState<CanvasBoard> {
                       card: card,
                       scale: _scale,
                       selected: card.id == _selectedId,
-                      onEdit: (text) => setState(() => card.text = text),
+                      onEdit: (text) {
+                        setState(() => card.text = text);
+                        _persist();
+                      },
                     ),
                   ),
                 if (_marquee != null)
@@ -421,32 +481,38 @@ class _CardWidgetState extends State<_CardWidget> {
             ),
             const SizedBox(height: 4),
             Expanded(
-              child: _editing
-                  ? TextField(
-                      controller: _controller,
-                      autofocus: true,
-                      maxLines: null,
-                      expands: true,
-                      style: TextStyle(
-                        fontSize: 12 * widget.scale.clamp(0.8, 1.6),
-                      ),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        border: InputBorder.none,
-                      ),
-                      onChanged: widget.onEdit,
-                      onTapOutside: (_) => setState(() => _editing = false),
+              child: widget.card.kind == CardKind.media
+                  ? _MediaCardBody(
+                      media: widget.card.media,
+                      scale: widget.scale,
                     )
-                  : Text(
-                      widget.card.text.isEmpty ? '双击编辑' : widget.card.text,
-                      overflow: TextOverflow.fade,
-                      style: TextStyle(
-                        fontSize: 12 * widget.scale.clamp(0.8, 1.6),
-                        color: widget.card.text.isEmpty
-                            ? theme.colorScheme.onSurfaceVariant
-                            : null,
-                      ),
-                    ),
+                  : _editing
+                      ? TextField(
+                          controller: _controller,
+                          autofocus: true,
+                          maxLines: null,
+                          expands: true,
+                          style: TextStyle(
+                            fontSize: 12 * widget.scale.clamp(0.8, 1.6),
+                          ),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            border: InputBorder.none,
+                          ),
+                          onChanged: widget.onEdit,
+                          onTapOutside: (_) =>
+                              setState(() => _editing = false),
+                        )
+                      : Text(
+                          widget.card.text.isEmpty ? '双击编辑' : widget.card.text,
+                          overflow: TextOverflow.fade,
+                          style: TextStyle(
+                            fontSize: 12 * widget.scale.clamp(0.8, 1.6),
+                            color: widget.card.text.isEmpty
+                                ? theme.colorScheme.onSurfaceVariant
+                                : null,
+                          ),
+                        ),
             ),
           ],
         ),
@@ -549,6 +615,96 @@ class _ZoomControls extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Renders a generated result: an image thumbnail, or a labelled placeholder
+/// for video/audio, fetched through the authenticated `/view` endpoint.
+///
+/// The fetch goes through the client rather than an `Image.network` URL because
+/// `/view` needs the same auth header as everything else; a plain URL would 401.
+class _MediaCardBody extends ConsumerWidget {
+  const _MediaCardBody({required this.media, required this.scale});
+
+  final List<Map<String, String>> media;
+  final double scale;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    if (media.isEmpty) {
+      return Center(
+        child: Text('无文件', style: theme.textTheme.labelSmall),
+      );
+    }
+    final service = ref.watch(workflowServiceProvider);
+    final first = media.first;
+    final name = '${first['filename']}'.toLowerCase();
+    final isImage = name.endsWith('.png') ||
+        name.endsWith('.jpg') ||
+        name.endsWith('.jpeg') ||
+        name.endsWith('.webp') ||
+        name.endsWith('.gif');
+    final isVideo = name.endsWith('.mp4') ||
+        name.endsWith('.webm') ||
+        name.endsWith('.mov');
+
+    if (service == null) {
+      return Center(child: Text('未连接', style: theme.textTheme.labelSmall));
+    }
+    if (!isImage) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isVideo ? Icons.movie_outlined : Icons.audiotrack_outlined,
+              size: 28 * scale.clamp(0.8, 1.6),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              isVideo ? '视频' : '文件',
+              style: theme.textTheme.labelSmall,
+            ),
+            if (media.length > 1)
+              Text(
+                '共 ${media.length} 个',
+                style: theme.textTheme.labelSmall,
+              ),
+          ],
+        ),
+      );
+    }
+    return FutureBuilder<Uint8List>(
+      future: service.fetchMedia(first),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              '读取失败',
+              style: theme.textTheme.labelSmall
+                  ?.copyWith(color: theme.colorScheme.error),
+            ),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Center(
+            child: SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        }
+        return Center(
+          child: Image.memory(
+            snapshot.data!,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+          ),
+        );
+      },
     );
   }
 }
