@@ -32,3 +32,6 @@ Thumbs.db
 /tmp/
 /toolchain/
 tools/fixtures/*.tmp
+
+# --- local probe cache (frontend bundles, object_info dumps) ---
+.cache/
