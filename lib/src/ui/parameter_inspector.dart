@@ -129,6 +129,7 @@ class _ParameterInspectorState extends ConsumerState<ParameterInspector> {
                       _sectionLabel(theme, '提升参数'),
                       for (final parameter in promoted)
                         _Field(
+                          key: ValueKey(parameter.key),
                           parameter: parameter,
                           value: params.valueOf(parameter),
                           onChanged: (value) =>
@@ -140,6 +141,7 @@ class _ParameterInspectorState extends ConsumerState<ParameterInspector> {
                       _sectionLabel(theme, '常用参数'),
                       for (final parameter in primary)
                         _Field(
+                          key: ValueKey(parameter.key),
                           parameter: parameter,
                           value: params.valueOf(parameter),
                           onChanged: (value) =>
@@ -157,6 +159,7 @@ class _ParameterInspectorState extends ConsumerState<ParameterInspector> {
                           children: [
                             for (final parameter in secondary)
                               _Field(
+                                key: ValueKey(parameter.key),
                                 parameter: parameter,
                                 value: params.valueOf(parameter),
                                 onChanged: (value) =>
@@ -257,8 +260,16 @@ class _PreflightProblems extends StatelessWidget {
 }
 
 /// Renders one parameter with an editor suited to its type.
+///
+/// The [key] is the parameter's stable identifier, not decoration: the form is
+/// a `ListView` of same-typed widgets, and without a key Flutter reuses state by
+/// position. That made every field *display* its neighbour's value after a
+/// rebuild — a seed showing `18446744073709552000.0` and a megapixels slider
+/// labelled `1.4096`, which looked like a number-parsing bug and was really
+/// widget identity.
 class _Field extends ConsumerWidget {
   const _Field({
+    super.key,
     required this.parameter,
     required this.value,
     required this.onChanged,
@@ -275,6 +286,7 @@ class _Field extends ConsumerWidget {
 
     if (parameter.isMedia) {
       return _MediaField(
+        key: ValueKey('media-${parameter.key}'),
         parameter: parameter,
         value: value,
         onChanged: onChanged,
@@ -330,6 +342,7 @@ class _Field extends ConsumerWidget {
     }
     if (parameter.isNumeric) {
       return _NumericField(
+        key: ValueKey('num-${parameter.key}'),
         parameter: parameter,
         value: value,
         onChanged: onChanged,
@@ -339,6 +352,7 @@ class _Field extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: _TextValueField(
+        key: ValueKey('text-${parameter.key}'),
         label: label,
         helper: helper,
         initial: '$value',
@@ -351,6 +365,7 @@ class _Field extends ConsumerWidget {
 
 class _TextValueField extends StatefulWidget {
   const _TextValueField({
+    super.key,
     required this.label,
     required this.helper,
     required this.initial,
@@ -407,6 +422,7 @@ class _TextValueFieldState extends State<_TextValueField> {
 
 class _NumericField extends StatefulWidget {
   const _NumericField({
+    super.key,
     required this.parameter,
     required this.value,
     required this.onChanged,
@@ -475,13 +491,14 @@ class _NumericFieldState extends State<_NumericField> {
             },
             decoration: InputDecoration(
               labelText: parameter.label,
-              helperText: parameter.key,
-              helperMaxLines: 1,
+              // The range goes in the helper, not a suffix: a 64-bit seed range
+              // is 26 characters and `suffixText` does not wrap or ellipsise, so
+              // it was drawn on top of the value (`655674275920..184467440737
+              // 09552000.0`) and made the field unreadable.
+              helperText: _helperText(parameter, min, max),
+              helperMaxLines: 2,
               isDense: true,
               border: const OutlineInputBorder(),
-              suffixText: min != null && max != null
-                  ? '$min..$max'
-                  : null,
             ),
           ),
           if (span && current != null)
@@ -504,6 +521,12 @@ class _NumericFieldState extends State<_NumericField> {
     );
   }
 
+  /// Helper line: the parameter's key plus its allowed range when known.
+  static String _helperText(ParameterDef parameter, num? min, num? max) {
+    if (min == null || max == null) return parameter.key;
+    return '${parameter.key} · $min..$max';
+  }
+
   /// Whether a numeric range is small enough to be a usable slider.
   ///
   /// Compared as `int` where possible, because `max - min` on a 64-bit range
@@ -519,6 +542,7 @@ class _NumericFieldState extends State<_NumericField> {
 /// A media parameter: pick from the server's `input` directory or upload.
 class _MediaField extends ConsumerWidget {
   const _MediaField({
+    super.key,
     required this.parameter,
     required this.value,
     required this.onChanged,

@@ -113,9 +113,27 @@ class InputSpec {
     return result;
   }
 
-  num? get min => options['min'] is num ? options['min'] as num : null;
-  num? get max => options['max'] is num ? options['max'] as num : null;
-  num? get step => options['step'] is num ? options['step'] as num : null;
+  num? get min => _asBound(options['min']);
+  num? get max => _asBound(options['max']);
+  num? get step => _asBound(options['step']);
+
+  /// Bounds come back from `/object_info` as JSON numbers. A 64-bit seed bound
+  /// arrives as `18446744073709551615`, which `jsonDecode` may hand back as a
+  /// `double` (`1.8446744073709552e+19`) depending on where it was decoded.
+  /// Restoring an exact `int` keeps the value printable and keeps range maths
+  /// from overflowing.
+  static num? _asBound(Object? raw) {
+    if (raw is int) return raw;
+    if (raw is double) {
+      // Only convert when the double is exactly representable as an int.
+      if (raw.isFinite && raw == raw.roundToDouble() && raw.abs() < 9.2e18) {
+        return raw.toInt();
+      }
+      return raw;
+    }
+    if (raw is String) return num.tryParse(raw);
+    return null;
+  }
 
   bool get isWidget {
     const widgetTypes = {'INT', 'FLOAT', 'STRING', 'BOOLEAN', 'COMBO'};
