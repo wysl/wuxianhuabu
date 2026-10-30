@@ -1,0 +1,34 @@
+# --- secrets / local credentials (NEVER commit) ---
+cert/
+*.pem
+*.key
+.env
+
+# --- Flutter / Dart ---
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+*.class
+*.log
+coverage/
+
+# --- Flutter desktop ephemeral build dirs ---
+windows/flutter/ephemeral/
+macos/Flutter/ephemeral/
+linux/flutter/ephemeral/
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# --- large local fixtures / caches ---
+/tmp/
+/toolchain/
+tools/fixtures/*.tmp

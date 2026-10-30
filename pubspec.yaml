@@ -1,0 +1,32 @@
+name: wuxianhuabu
+description: ComfyUI 无限画布桌面客户端（Flutter，支持远程与本地 API）
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dio: ^5.11.1
+  web_socket_channel: ^3.0.3
+  file_picker: ^13.3.0
+  desktop_drop: ^0.8.0
+  path_provider: ^2.1.6
+  window_manager: ^0.5.2
+  flutter_secure_storage: ^11.2.0
+  crypto: ^3.0.8
+  mime: ^2.1.0
+  vector_math: ^2.1.4
+  collection: ^1.19.1
+  uuid: ^4.5.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  test: ^1.25.0
+
+flutter:
+  uses-material-design: true
