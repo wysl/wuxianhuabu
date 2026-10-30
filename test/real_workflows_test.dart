@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wuxianhuabu/comfy_graph.dart';
-import 'package:wuxianhuabu/src/graph/prompt_patcher.dart';
 
 /// Real workflows captured from a live ComfyUI 0.42.1 instance.
 ///

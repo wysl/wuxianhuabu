@@ -97,10 +97,20 @@ class InputSpec {
 
   List<String>? get comboOptions {
     final values = options['options'];
-    if (values is List) {
-      return [for (final value in values) '$value'];
+    if (values is! List) return null;
+    final result = <String>[];
+    for (final value in values) {
+      // Most combos list plain strings, but a dynamic combo
+      // (`COMFY_DYNAMICCOMBO_V3`) lists `{key, inputs}` objects whose `key` is
+      // the value that goes into the prompt.
+      if (value is Map) {
+        final key = value['key'];
+        if (key != null) result.add('$key');
+        continue;
+      }
+      result.add('$value');
     }
-    return null;
+    return result;
   }
 
   num? get min => options['min'] is num ? options['min'] as num : null;
@@ -209,5 +219,57 @@ class NodeDefinitionRegistry {
       );
     }
     return enriched;
+  }
+
+  /// Checks an expanded prompt against the server's own input declarations.
+  ///
+  /// This catches the failure mode that a saved workflow cannot reveal about
+  /// itself: the JSON was written against a different set of installed models
+  /// or custom nodes, so a value that was valid then is now out of range. The
+  /// server answers `Value not in list` for these, but only *after* a submit;
+  /// reporting it up front turns a confusing 400 into an actionable message.
+  ///
+  /// Returns one message per problem, empty when the prompt looks submit-ready.
+  List<String> validatePrompt(Map<String, Object?> prompt) {
+    final problems = <String>[];
+
+    for (final entry in prompt.entries) {
+      final execId = entry.key;
+      final node = entry.value;
+      if (node is! Map) continue;
+      final classType = '${node['class_type']}';
+      final definition = _definitions[classType];
+      if (definition == null) {
+        problems.add('节点 $execId 的类型 $classType 在服务器上不存在（缺少自定义节点）');
+        continue;
+      }
+      final inputs = node['inputs'];
+      if (inputs is! Map) continue;
+
+      for (final input in inputs.entries) {
+        final name = '${input.key}';
+        final value = input.value;
+        // Links are validated by the server's graph walk, not here.
+        if (value is List || value is Map) continue;
+
+        final spec = definition.specFor(name);
+        if (spec == null) continue;
+
+        final allowed = spec.comboOptions;
+        if (allowed != null && allowed.isNotEmpty && value is String) {
+          if (!allowed.contains(value)) {
+            problems.add(
+              '$execId.$name 的值 "$value" 不在服务器可选列表中'
+              '（${definition.classType}，共 ${allowed.length} 项）',
+            );
+          }
+          continue;
+        }
+        if (spec.type == 'INT' && value is num && value != value.roundToDouble()) {
+          problems.add('$execId.$name 需要整数，收到 $value');
+        }
+      }
+    }
+    return problems;
   }
 }
