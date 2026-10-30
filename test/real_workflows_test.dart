@@ -82,13 +82,18 @@ void main() {
           }
         }
 
-        // 4. Parameters must be writable and typed.
-        expect(
-          expanded.parameters.where((p) => p.targets.isNotEmpty),
-          isNotEmpty,
-          reason: '$name exposed no writable parameter',
-        );
+        // 4. Every exposed parameter must be writable and typed.
+        //
+        // The default policy exposes only what the author published (promoted
+        // subgraph inputs and `QQ-多值输入` broadcasts), so a workflow using
+        // neither legitimately exposes nothing — it is meant to be run exactly as
+        // saved. What must never happen is a parameter pointing somewhere invalid.
         for (final parameter in expanded.parameters) {
+          expect(
+            parameter.targets,
+            isNotEmpty,
+            reason: '${parameter.key} on $name has no target',
+          );
           for (final target in parameter.targets) {
             final node = expanded.prompt[target.execId];
             expect(

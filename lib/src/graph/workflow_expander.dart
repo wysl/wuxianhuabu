@@ -54,21 +54,36 @@ class WorkflowExpander {
   ExpandedWorkflow expand({ParameterExtractorOptions? extractorOptions}) {
     _walk(_GraphScope.root(workflow), '', const {});
 
-    // Promotions come first because they carry an authored label, then the
-    // raw widget inputs fill the rest. Most real workflows declare no
-    // subgraph at all, so without the second pass the form would be empty.
-    final promoted = List<ParameterDef>.from(_parameters);
-    final widgetParameters = ParameterExtractor(
+    final extractor = ParameterExtractor(
       options: extractorOptions ?? const ParameterExtractorOptions(),
-    ).fromWidgets(
+    );
+
+    // Order matters: promoted subgraph inputs are authored, and the `QQ-多值输入`
+    // broadcasters come next because their values were inlined into the prompt
+    // and would otherwise be unattributable. Plain widgets fill whatever is left,
+    // and only when the caller asked for them.
+    final promoted = List<ParameterDef>.from(_parameters);
+    final broadcast = extractor.fromBroadcastNodes(
+      nodes: workflow.nodes,
+      prompt: _prompt,
+      links: {for (final link in workflow.links) link.id: link},
+      nodesById: {
+        for (final node in workflow.nodes) '${node.id}': node,
+      },
+    );
+    final widgetParameters = extractor.fromWidgets(
       prompt: _prompt,
       nodesById: _uiNodesByExecId,
-      existing: promoted,
+      existing: [...promoted, ...broadcast],
     );
 
     return ExpandedWorkflow(
       prompt: Map.unmodifiable(_prompt),
-      parameters: List.unmodifiable([...promoted, ...widgetParameters]),
+      parameters: List.unmodifiable([
+        ...promoted,
+        ...broadcast,
+        ...widgetParameters,
+      ]),
       warnings: List.unmodifiable(_warnings),
     );
   }
