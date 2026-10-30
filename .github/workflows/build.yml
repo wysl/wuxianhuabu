@@ -1,0 +1,97 @@
+name: build
+
+# Builds both target platforms on their own runners.
+#
+# The macOS arm64 artifact cannot be produced on Windows, so this is the only
+# way to deliver it from a Windows development machine. Both jobs run the offline
+# test suite: the live-instance tests skip themselves unless COMFYUI_URL is set,
+# which keeps CI hermetic while still allowing a manual end-to-end run.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  analyze-and-test:
+    name: analyze and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: dart analyze lib test
+      - name: test
+        run: flutter test --reporter expanded
+
+  build-windows:
+    name: windows x64
+    needs: analyze-and-test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+
+      - run: flutter config --enable-windows-desktop
+      - run: flutter pub get
+      - run: flutter build windows --release
+
+      - name: package
+        shell: pwsh
+        run: |
+          $src = "build/windows/x64/runner/Release"
+          $out = "wuxianhuabu-windows-x64.zip"
+          Compress-Archive -Path "$src/*" -DestinationPath $out -Force
+          Get-Item $out | Format-List Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wuxianhuabu-windows-x64
+          path: wuxianhuabu-windows-x64.zip
+          if-no-files-found: error
+
+  build-macos:
+    name: macos arm64
+    needs: analyze-and-test
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+
+      - run: flutter config --enable-macos-desktop
+      - run: flutter pub get
+      - run: flutter build macos --release
+
+      - name: package
+        run: |
+          cd build/macos/Build/Products/Release
+          # The product is an .app bundle; zip it so the artifact keeps its
+          # structure and executable bit.
+          ditto -c -k --sequesterRsrc --keepParent *.app \
+            "$GITHUB_WORKSPACE/wuxianhuabu-macos-arm64.zip"
+          ls -lh "$GITHUB_WORKSPACE/wuxianhuabu-macos-arm64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wuxianhuabu-macos-arm64
+          path: wuxianhuabu-macos-arm64.zip
+          if-no-files-found: error

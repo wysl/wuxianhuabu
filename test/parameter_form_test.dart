@@ -51,15 +51,17 @@ String editorText(WidgetTester tester, String key) {
 void main() {
   setUp(() {
     // A tall surface so the whole form lays out at once.
-    final binding = TestWidgetsFlutterBinding.ensureInitialized();
-    binding.window.physicalSizeTestValue = const Size(1200, 6000);
-    binding.window.devicePixelRatioTestValue = 1.0;
+    final view =
+        TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher.implicitView!;
+    view.physicalSize = const Size(1200, 6000);
+    view.devicePixelRatio = 1.0;
   });
 
   tearDown(() {
-    final binding = TestWidgetsFlutterBinding.ensureInitialized();
-    binding.window.clearPhysicalSizeTestValue();
-    binding.window.clearDevicePixelRatioTestValue();
+    final view =
+        TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher.implicitView!;
+    view.resetPhysicalSize();
+    view.resetDevicePixelRatio();
   });
 
   Future<void> pump(WidgetTester tester, PreparedWorkflow prepared) async {

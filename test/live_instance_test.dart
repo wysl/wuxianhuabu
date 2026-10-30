@@ -54,7 +54,7 @@ void main() {
       expect(version, isA<String>());
       expect('$version', isNotEmpty);
       // ignore: avoid_print
-      print('connected: ComfyUI $version @ ${_baseUrl}');
+      print('connected: ComfyUI $version @ $_baseUrl');
     });
 
     test('object_info is a large registry', () async {
@@ -79,7 +79,7 @@ void main() {
         reason: 'the instance has no saved workflows under user/workflows',
       );
       // ignore: avoid_print
-      print('found ${files.length} saved workflows');
+      print('found $files.length saved workflows');
 
       // Reading one back proves the path encoding: `/` must be percent-encoded
       // or ComfyUI answers 404.
